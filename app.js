@@ -151,6 +151,173 @@ function isCargoBranch(w){
   return maxWeight > 30 || text.includes("вантажне") || text.includes("грузовое");
 }
 
+function getKyivDate() {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Kyiv' }));
+}
+
+function getTodayScheduleKey() {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Kyiv',
+    weekday: 'long'
+  }).format(getKyivDate());
+}
+
+function getCurrentKyivMinutes(date = getKyivDate()) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Kyiv',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).formatToParts(date);
+
+  const hour = Number(parts.find(part => part.type === 'hour')?.value || 0);
+  const minute = Number(parts.find(part => part.type === 'minute')?.value || 0);
+  return hour * 60 + minute;
+}
+
+function normalizeScheduleValue(value) {
+  if(value === null || value === undefined) return "";
+  const raw = String(value).trim().replace(/\u00A0/g, ' ');
+  if(!raw) return "";
+  const firstPart = raw.split(',')[0].trim();
+  return firstPart
+    .replace(/\s*[-–—]\s*/g, '–')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractScheduleForDay(warehouse, dayName) {
+  const candidates = [
+    warehouse?.Schedule,
+    warehouse?.WorkSchedule,
+    warehouse?.WorkTime,
+    warehouse?.OpeningHours,
+    warehouse?.ScheduleData,
+    warehouse?.ScheduleInfo
+  ];
+
+  for (const obj of candidates) {
+    if(!obj || typeof obj !== 'object') continue;
+    const values = [
+      obj[dayName],
+      obj[dayName.toLowerCase()],
+      obj[dayName.toUpperCase()],
+      obj[dayName.slice(0, 3)]
+    ];
+    const value = values.find(v => v !== undefined && v !== null && String(v).trim() !== "");
+    if(value !== undefined) return normalizeScheduleValue(value);
+  }
+
+  const altNames = [
+    `Schedule${dayName}`,
+    `WorkSchedule${dayName}`,
+    `WorkTime${dayName}`,
+    `${dayName}Schedule`,
+    `${dayName}WorkTime`
+  ];
+
+  for (const key of altNames) {
+    const value = warehouse?.[key];
+    if(value !== undefined && value !== null && String(value).trim() !== "") {
+      return normalizeScheduleValue(value);
+    }
+  }
+
+  return "";
+}
+
+function parseScheduleRange(rangeText) {
+  const normalized = normalizeScheduleValue(rangeText);
+  if(!normalized) return null;
+
+  const match = normalized.match(/^(\d{1,2}:\d{2})\s*–\s*(\d{1,2}:\d{2})$/i);
+  if(!match) return null;
+
+  const startMinutes = Number(match[1].split(':')[0]) * 60 + Number(match[1].split(':')[1]);
+  let endMinutes = Number(match[2].split(':')[0]) * 60 + Number(match[2].split(':')[1]);
+  if(endMinutes <= startMinutes) endMinutes += 24 * 60;
+
+  return { startMinutes, endMinutes };
+}
+
+function isTemporarilyInactive(warehouse) {
+  const values = [
+    warehouse?.IsActive,
+    warehouse?.IsWorking,
+    warehouse?.IsWarehouseWorking,
+    warehouse?.WarehouseIsWorking,
+    warehouse?.WarehouseStatus,
+    warehouse?.WarehouseStatusDescription,
+    warehouse?.Status,
+    warehouse?.StatusDescription,
+    warehouse?.Schedule?.IsActive,
+    warehouse?.WorkSchedule?.IsActive,
+    warehouse?.Schedule?.Status,
+    warehouse?.WorkSchedule?.Status
+  ];
+
+  for (const value of values) {
+    if(value === null || value === undefined) continue;
+
+    if(typeof value === 'boolean') {
+      if(!value) return true;
+      continue;
+    }
+
+    if(typeof value === 'number') {
+      if(value === 0 || value === 2 || value === 3) return true;
+      continue;
+    }
+
+    const text = String(value).trim().toLowerCase();
+    if(!text) continue;
+
+    const inactivePattern = /(неактив|inactive|not active|не працює|not working|тимчасово|temporary|closed|закрито|закритий|disabled|вимкн)/i;
+    if(inactivePattern.test(text)) return true;
+  }
+
+  return false;
+}
+
+function buildWarehouseStatus(warehouse) {
+  const today = getTodayScheduleKey();
+  const todayRange = extractScheduleForDay(warehouse, today);
+
+  if(isTemporarilyInactive(warehouse)) {
+    return {
+      type: 'inactive',
+      label: '🔴 Тимчасово не працює',
+      todayText: ''
+    };
+  }
+
+  if(!todayRange) {
+    return {
+      type: 'missing',
+      label: '',
+      todayText: 'Графік не вказано'
+    };
+  }
+
+  const range = parseScheduleRange(todayRange);
+  if(!range) {
+    return {
+      type: 'missing',
+      label: '',
+      todayText: `Сьогодні: ${todayRange}`
+    };
+  }
+
+  const currentMinutes = getCurrentKyivMinutes();
+  const isOpen = currentMinutes >= range.startMinutes && currentMinutes < range.endMinutes;
+
+  return {
+    type: isOpen ? 'open' : 'closed',
+    label: isOpen ? '🟢 Працює зараз' : '⚫ Зараз зачинено',
+    todayText: `Сьогодні: ${todayRange}`
+  };
+}
+
 function renderWarehouses(){
   const query = els.warehouse.value.trim().toLowerCase();
   let data = warehouses.filter(w => {
@@ -185,11 +352,29 @@ function renderWarehouses(){
     const address = w.ShortAddress || w.Description || "";
     const city = w.CityDescription || selectedCity?.MainDescription || selectedCity?.Present || "";
     const weight = w.TotalMaxWeightAllowed ? `до ${w.TotalMaxWeightAllowed} кг` : "";
+    const status = buildWarehouseStatus(w);
 
     node.querySelector(".badge").textContent = postomat ? "ПОШТОМАТ" : (cargo ? "ВАНТАЖНЕ" : "ВІДДІЛЕННЯ");
     node.querySelector(".warehouse-title").textContent = title;
     node.querySelector(".warehouse-address").textContent = address;
     node.querySelector(".warehouse-extra").textContent = [city, weight].filter(Boolean).join(" • ");
+
+    const statusBar = node.querySelector(".status-line");
+    const statusText = node.querySelector(".status-text");
+    const scheduleLine = node.querySelector(".schedule-line");
+
+    if(status.type === 'missing'){
+      statusBar.classList.add('hidden');
+      scheduleLine.textContent = status.todayText;
+    } else if(status.type === 'inactive'){
+      statusBar.classList.add(status.type);
+      statusText.textContent = status.label;
+      scheduleLine.textContent = '';
+    } else {
+      statusBar.classList.add(status.type);
+      statusText.textContent = status.label;
+      scheduleLine.textContent = status.todayText;
+    }
 
     node.querySelector(".copy-btn").addEventListener("click", async () => {
       const number = String(w.Number || "").trim();
