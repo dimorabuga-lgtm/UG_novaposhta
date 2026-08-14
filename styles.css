@@ -56,11 +56,22 @@ h2{margin:5px 0 0;font-size:24px}
 .chip{border:1px solid var(--line);background:var(--chip);color:var(--chip-text);border-radius:999px;padding:8px 12px;font-size:13px;font-weight:700}
 .chip:hover{border-color:rgba(50,214,176,0.3)}
 .chip.active{background:var(--chip-active);color:var(--chip-active-text);border-color:var(--chip-active)}
-.suggestions{position:absolute;z-index:10;left:0;right:0;top:72px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 35px rgba(0,0,0,.12);max-height:285px;overflow:auto;padding:6px}
+.suggestions{position:absolute;z-index:10;left:0;right:0;top:72px;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:0 14px 35px rgba(0,0,0,.12);max-height:310px;overflow:auto;padding:8px}
+.popular-header{padding:6px 8px 10px;font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.popular-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:2px 2px 6px}
+.popular-item{display:flex;align-items:center;gap:8px;width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--text);font-weight:700;text-align:left;cursor:pointer;transition:transform .15s ease, background-color .15s ease, border-color .15s ease;}
+.popular-item:hover{background:var(--card-strong);border-color:rgba(50,214,176,0.35);transform:translateY(-1px)}
+.popular-pin{display:inline-flex;align-items:center;justify-content:center;opacity:.9}
 .suggestion{padding:10px 11px;border-radius:8px;cursor:pointer;color:var(--text)}
 .suggestion:hover{background:var(--surface-2)}
 .suggestion small{display:block;color:var(--muted);margin-top:2px}
 .hidden{display:none!important}
+@media (max-width: 620px){
+  .popular-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width: 420px){
+  .popular-grid{grid-template-columns:1fr}
+}
 .result-head{display:flex;justify-content:space-between;align-items:center;margin:18px 3px 10px;color:var(--muted);font-size:14px}
 .text-btn{border:0;background:transparent;color:var(--red);font-weight:750}
 .results{display:grid;gap:10px}

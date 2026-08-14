@@ -34,6 +34,29 @@ let warehouses = [];
 let filterType = "all";
 let cityTimer = null;
 
+const POPULAR_CITIES = [
+  "Київ",
+  "Харків",
+  "Одеса",
+  "Дніпро",
+  "Львів",
+  "Запоріжжя",
+  "Кривий Ріг",
+  "Миколаїв",
+  "Вінниця",
+  "Полтава",
+  "Чернігів",
+  "Черкаси",
+  "Житомир",
+  "Хмельницький",
+  "Чернівці",
+  "Рівне",
+  "Івано-Франківськ",
+  "Тернопіль",
+  "Луцьк",
+  "Ужгород"
+];
+
 function toast(text){
   els.toast.textContent = text;
   els.toast.classList.add("show");
@@ -110,16 +133,70 @@ async function npRequest(modelName, calledMethod, methodProperties = {}){
   return json.data || json;
 }
 
+function renderPopularCities(){
+  els.citySuggestions.innerHTML = `
+    <div class="popular-header">Популярні міста</div>
+    <div class="popular-grid">
+      ${POPULAR_CITIES.map(city => `
+        <button type="button" class="popular-item" data-city="${escapeHtml(city)}">
+          <span class="popular-pin">📍</span>
+          <span>${escapeHtml(city)}</span>
+        </button>
+      `).join("")}
+    </div>
+  `;
+
+  els.citySuggestions.querySelectorAll(".popular-item").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const cityName = btn.dataset.city;
+      if(!cityName) return;
+
+      els.city.value = cityName;
+      els.citySuggestions.classList.add("hidden");
+
+      try{
+        const data = await npRequest("Address", "searchSettlements", {
+          CityName: cityName,
+          Limit: 20,
+          Page: 1
+        });
+
+        const addresses = data?.[0]?.Addresses || [];
+        if(!addresses.length){
+          els.status.textContent = `Не вдалося знайти "${cityName}"`;
+          return;
+        }
+
+        const match = addresses.find(item => {
+          const present = (item.Present || item.MainDescription || "").toLowerCase();
+          return present === cityName.toLowerCase();
+        }) || addresses[0];
+
+        selectCity(match);
+      }catch(e){
+        els.status.textContent = e.message;
+      }
+    });
+  });
+
+  els.citySuggestions.classList.remove("hidden");
+}
+
 async function searchCities(q){
-  if(q.trim().length < 2){
+  const value = q.trim();
+  if(!value){
+    els.citySuggestions.classList.add("hidden");
+    return;
+  }
+  if(value.length < 2){
     els.citySuggestions.classList.add("hidden");
     return;
   }
   try{
     const data = await npRequest("Address", "searchSettlements", {
-      CityName:q.trim(),
-      Limit:20,
-      Page:1
+      CityName: value,
+      Limit: 20,
+      Page: 1
     });
 
     const addresses = data?.[0]?.Addresses || [];
@@ -145,6 +222,7 @@ async function searchCities(q){
 
 async function selectCity(item){
   selectedCity = item;
+  els.city.dataset.isTyping = '';
   els.city.value = item.Present || item.MainDescription || "";
   els.citySuggestions.classList.add("hidden");
   els.warehouse.disabled = false;
@@ -469,11 +547,56 @@ function escapeHtml(str){
   }[c]));
 }
 
+function resetCitySelection(){
+  selectedCity = null;
+  els.city.value = "";
+  els.warehouse.value = "";
+  els.warehouse.disabled = true;
+  warehouses = [];
+  els.results.innerHTML = "";
+  els.status.textContent = "Введіть назву міста";
+  els.clear.classList.add("hidden");
+  renderPopularCities();
+  els.city.focus();
+}
+
+els.city.addEventListener("focus", () => {
+  const currentValue = els.city.value.trim();
+  const selectedValue = selectedCity ? (selectedCity.Present || selectedCity.MainDescription || "").trim() : "";
+
+  if(selectedCity && selectedValue && currentValue === selectedValue && !els.city.dataset.isTyping) {
+    resetCitySelection();
+    return;
+  }
+
+  if(!currentValue){
+    renderPopularCities();
+  }
+});
+
+els.city.addEventListener("click", () => {
+  if(!selectedCity && !els.city.value.trim()){
+    renderPopularCities();
+  }
+});
+
 els.city.addEventListener("input", () => {
   selectedCity = null;
   els.warehouse.disabled = true;
   clearTimeout(cityTimer);
-  cityTimer = setTimeout(() => searchCities(els.city.value), 280);
+
+  els.city.dataset.isTyping = '1';
+
+  if(!els.city.value.trim()){
+    els.citySuggestions.classList.add("hidden");
+    els.city.dataset.isTyping = '';
+    return;
+  }
+
+  cityTimer = setTimeout(() => {
+    els.city.dataset.isTyping = '';
+    searchCities(els.city.value);
+  }, 280);
 });
 els.warehouse.addEventListener("input", renderWarehouses);
 els.clear.addEventListener("click", clearAll);
