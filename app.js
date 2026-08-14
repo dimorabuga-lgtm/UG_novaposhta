@@ -19,6 +19,7 @@ const els = {
   settingsDialog: document.querySelector('#settingsDialog'),
   apiStatus: document.querySelector('#apiStatus'),
   apiMasked: document.querySelector('#apiMasked'),
+  largeTextToggle: document.querySelector('#largeTextToggle'),
   changeKeyBtn: document.querySelector('#changeKeyBtn'),
   clearKeyBtn: document.querySelector('#clearKeyBtn'),
   adminPassDialog: document.querySelector('#adminPassDialog'),
@@ -614,11 +615,32 @@ document.querySelectorAll(".chip").forEach(btn => {
   });
 });
 
+function getStoredLargeText(){
+  return localStorage.getItem('ug_large_text') === '1';
+}
+
+function applyLargeText(enabled){
+  const next = !!enabled;
+  document.documentElement.dataset.largeText = next ? '1' : '0';
+  localStorage.setItem('ug_large_text', next ? '1' : '0');
+
+  if(els.largeTextToggle){
+    els.largeTextToggle.checked = next;
+  }
+}
+
 function updateSettingsUI(){
   const has = requireApiKey();
   els.apiStatus.textContent = has ? 'Статус: Підключено ✓' : 'Статус: Не налаштовано';
   els.apiMasked.textContent = has ? '••••••••••••••••' : '—';
+  if(els.largeTextToggle){
+    els.largeTextToggle.checked = getStoredLargeText();
+  }
 }
+
+els.largeTextToggle?.addEventListener('change', () => {
+  applyLargeText(els.largeTextToggle.checked);
+});
 
 function openNewKeyDialog(initial=false){
   els.newApiInput.value = '';
@@ -729,6 +751,8 @@ function initAfterAuth(){
   }
   els.city.focus();
 }
+
+applyLargeText(getStoredLargeText());
 
 window.addEventListener("DOMContentLoaded", () => {
   if(!isAuthorized()){

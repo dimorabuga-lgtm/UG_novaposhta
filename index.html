@@ -12,6 +12,10 @@
       const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
       const theme = saved || (systemDark ? 'dark' : 'light');
       document.documentElement.dataset.theme = theme;
+
+      const largeTextKey = 'ug_large_text';
+      const largeText = localStorage.getItem(largeTextKey) === '1';
+      document.documentElement.dataset.largeText = largeText ? '1' : '0';
     })();
   </script>
   <link rel="stylesheet" href="styles.css" />
@@ -98,6 +102,12 @@
         <button id="changeKeyBtn" class="chip">Змінити API Key</button>
         <button id="clearKeyBtn" class="chip">Очистити API Key</button>
       </div>
+
+      <label class="large-text-toggle" for="largeTextToggle">
+        <input id="largeTextToggle" type="checkbox" />
+        <span>A+ Великі шрифти</span>
+      </label>
+
       <p class="muted" style="margin-top:12px">API Key не відображається в інтерфейсі для безпеки.</p>
     </form>
   </dialog>
