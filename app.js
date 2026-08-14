@@ -14,6 +14,7 @@ const els = {
   sitePassword: document.querySelector('#sitePassword'),
   loginBtn: document.querySelector('#loginBtn'),
   settingsBtn: document.querySelector('#settingsBtn'),
+  themeToggle: document.querySelector('#themeToggle'),
   logoutBtn: document.querySelector('#logoutBtn'),
   settingsDialog: document.querySelector('#settingsDialog'),
   apiStatus: document.querySelector('#apiStatus'),
@@ -47,6 +48,31 @@ function isAuthorized(){
 function requireApiKey(){
   return !!localStorage.getItem('nova_poshta_api_key');
 }
+
+function getStoredTheme(){
+  const key = 'ug_theme';
+  const saved = localStorage.getItem(key);
+  if(saved === 'light' || saved === 'dark') return saved;
+  return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function applyTheme(theme){
+  const next = theme === 'dark' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem('ug_theme', next);
+  if(els.themeToggle){
+    els.themeToggle.textContent = next === 'dark' ? '☀️' : '🌙';
+    els.themeToggle.title = next === 'dark' ? 'Світла тема' : 'Темна тема';
+    els.themeToggle.setAttribute('aria-label', next === 'dark' ? 'Переключити на світлу тему' : 'Переключити на темну тему');
+  }
+}
+
+els.themeToggle?.addEventListener('click', () => {
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  applyTheme(next);
+});
+
+applyTheme(getStoredTheme());
 
 async function npRequest(modelName, calledMethod, methodProperties = {}){
   const apiKey = localStorage.getItem('nova_poshta_api_key') || '';

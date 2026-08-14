@@ -5,6 +5,15 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Пошук відділення — Нова пошта</title>
   <meta name="theme-color" content="#ef3124" />
+  <script>
+    (function(){
+      const key = 'ug_theme';
+      const saved = localStorage.getItem(key);
+      const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const theme = saved || (systemDark ? 'dark' : 'light');
+      document.documentElement.dataset.theme = theme;
+    })();
+  </script>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -12,13 +21,15 @@
     <header class="topbar">
       <div class="brand-wrap">
         <div class="brand-mark" aria-hidden="true">UG</div>
-        <div>
-          <div class="eyebrow">UG CALL CENTRE</div>
-          <h1>Пошук відділення</h1>
-          <p>Знайдіть відділення або поштомат Нової пошти та скопіюйте адресу в один клік.</p>
+        <div class="brand-copy">
+          <div class="eyebrow"><span class="brand-ug">UG</span> <span class="brand-call">CALL CENTRE</span></div>
+          <div class="brand-tag">UG OS • DELIVERY TOOLS</div>
+          <h1>Пошук відділень Нової пошти</h1>
+          <p>Знайдіть відділення або поштомат та скопіюйте адресу в один клік.</p>
         </div>
       </div>
-      <div style="display:flex;gap:10px;align-items:center;z-index:2">
+      <div class="header-tools" style="display:flex;gap:10px;align-items:center;z-index:2">
+        <button id="themeToggle" class="icon-btn theme-toggle" type="button" title="Змінити тему" aria-label="Змінити тему">☀️</button>
         <button id="settingsBtn" class="icon-btn" title="Налаштування">⚙</button>
         <button id="logoutBtn" class="text-btn">Вийти</button>
       </div>
