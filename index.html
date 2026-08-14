@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Пошук відділення — Нова пошта</title>
+  <meta name="theme-color" content="#ef3124" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand-wrap">
+        <div class="brand-mark" aria-hidden="true">UG</div>
+        <div>
+          <div class="eyebrow">UG CALL CENTRE</div>
+          <h1>Пошук відділення</h1>
+          <p>Знайдіть відділення або поштомат Нової пошти та скопіюйте адресу в один клік.</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;z-index:2">
+        <button id="settingsBtn" class="icon-btn" title="Налаштування">⚙</button>
+        <button id="logoutBtn" class="text-btn">Вийти</button>
+      </div>
+      <div class="header-orb header-orb-one" aria-hidden="true"></div>
+      <div class="header-orb header-orb-two" aria-hidden="true"></div>
+    </header>
+
+    <section class="search-card">
+      <div class="field">
+        <label for="cityInput">Населений пункт</label>
+        <input id="cityInput" autocomplete="off" placeholder="Наприклад: Київ" />
+        <div id="citySuggestions" class="suggestions hidden"></div>
+      </div>
+
+      <div class="field">
+        <label for="warehouseInput">№ або адреса відділення</label>
+        <input id="warehouseInput" autocomplete="off" placeholder="Наприклад: 25 або Хрещатик" disabled />
+      </div>
+
+      <div class="filters">
+        <button class="chip active" data-type="all">Усі</button>
+        <button class="chip" data-type="branch">Відділення</button>
+        <button class="chip" data-type="cargo">Вантажні відділення</button>
+        <button class="chip" data-type="postomat">Поштомати</button>
+      </div>
+    </section>
+
+    <div class="result-head">
+      <div id="status">Введіть назву міста</div>
+      <button id="clearBtn" class="text-btn hidden">Очистити</button>
+    </div>
+
+    <section id="results" class="results"></section>
+  </main>
+
+  <div id="toast" class="toast" role="status"></div>
+
+  <!-- Login Overlay -->
+  <div id="loginOverlay" class="overlay">
+    <div class="overlay-card">
+      <div class="eyebrow">UG CALL CENTRE</div>
+      <h2>Пошук відділень Нової пошти</h2>
+      <p>Введіть пароль для входу</p>
+      <label for="sitePassword">Пароль</label>
+      <input id="sitePassword" type="password" placeholder="Пароль" autofocus />
+      <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+        <button id="loginBtn" class="primary">Увійти</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Dialog -->
+  <dialog id="settingsDialog">
+    <form method="dialog" class="settings" id="settingsForm">
+      <div class="dialog-title">
+        <div>
+          <div class="eyebrow">Налаштування</div>
+          <h2>API Нової пошти</h2>
+        </div>
+        <button class="icon-btn" value="cancel" aria-label="Закрити">✕</button>
+      </div>
+      <p id="apiStatus" class="muted">Статус: —</p>
+      <label>API Key</label>
+      <div id="apiMasked" style="font-weight:800;letter-spacing:2px">••••••••••••••••</div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+        <button id="changeKeyBtn" class="chip">Змінити API Key</button>
+        <button id="clearKeyBtn" class="chip">Очистити API Key</button>
+      </div>
+      <p class="muted" style="margin-top:12px">API Key не відображається в інтерфейсі для безпеки.</p>
+    </form>
+  </dialog>
+
+  <!-- Admin Password Dialog -->
+  <dialog id="adminPassDialog">
+    <form method="dialog" class="settings" id="adminPassForm">
+      <div class="dialog-title">
+        <div>
+          <div class="eyebrow">Адміністрування</div>
+          <h2>Потрібен пароль адміністратора</h2>
+        </div>
+        <button class="icon-btn" value="cancel" aria-label="Закрити">✕</button>
+      </div>
+      <p class="muted">Для зміни або видалення API Key введіть пароль адміністратора.</p>
+      <label for="adminPassInput">Пароль</label>
+      <input id="adminPassInput" type="password" placeholder="Пароль адміністратора" />
+      <div class="dialog-actions">
+        <button id="adminConfirmBtn" class="primary" value="default">Підтвердити</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- New API Key Dialog (after admin confirmed or initial add) -->
+  <dialog id="newKeyDialog">
+    <form method="dialog" class="settings" id="newKeyForm">
+      <div class="dialog-title">
+        <div>
+          <div class="eyebrow">API Key</div>
+          <h2>Введіть новий API Key</h2>
+        </div>
+        <button class="icon-btn" value="cancel" aria-label="Закрити">✕</button>
+      </div>
+      <p class="muted">Введіть API Key Нової пошти. Значення не відображається після збереження.</p>
+      <label for="newApiInput">API Key</label>
+      <input id="newApiInput" type="password" placeholder="Новий API Key" autocomplete="new-password" />
+      <div class="dialog-actions">
+        <button id="saveNewApiBtn" class="primary">Зберегти</button>
+      </div>
+    </form>
+  </dialog>
+
+
+  <template id="warehouseTemplate">
+    <article class="warehouse-card">
+      <div class="warehouse-main">
+        <div class="badge"></div>
+        <h3 class="warehouse-title"></h3>
+        <p class="warehouse-address"></p>
+        <p class="warehouse-extra"></p>
+      </div>
+      <button class="copy-btn">Копіювати</button>
+    </article>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
