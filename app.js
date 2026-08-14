@@ -58,6 +58,20 @@ const POPULAR_CITIES = [
   "Ужгород"
 ];
 
+if(els.citySuggestions && els.citySuggestions.parentElement){
+  document.body.appendChild(els.citySuggestions);
+}
+
+window.addEventListener('scroll', () => {
+  if(!els.citySuggestions || els.citySuggestions.classList.contains('hidden')) return;
+  positionCitySuggestions();
+}, true);
+
+window.addEventListener('resize', () => {
+  if(!els.citySuggestions || els.citySuggestions.classList.contains('hidden')) return;
+  positionCitySuggestions();
+});
+
 function toast(text){
   els.toast.textContent = text;
   els.toast.classList.add("show");
@@ -134,6 +148,23 @@ async function npRequest(modelName, calledMethod, methodProperties = {}){
   return json.data || json;
 }
 
+function positionCitySuggestions(){
+  const input = els.city;
+  const dropdown = els.citySuggestions;
+  if(!input || !dropdown || dropdown.classList.contains('hidden')) return;
+
+  const rect = input.getBoundingClientRect();
+  const dropdownMaxHeight = Math.min(420, window.innerHeight * 0.6);
+  const left = Math.max(8, Math.min(rect.left, window.innerWidth - rect.width - 8));
+  const top = Math.min(rect.bottom + 6, window.innerHeight - dropdownMaxHeight - 12);
+
+  dropdown.style.position = 'fixed';
+  dropdown.style.left = `${left}px`;
+  dropdown.style.top = `${top}px`;
+  dropdown.style.width = `${rect.width}px`;
+  dropdown.style.maxHeight = `${dropdownMaxHeight}px`;
+}
+
 function renderPopularCities(){
   els.citySuggestions.innerHTML = `
     <div class="popular-header">Популярні міста</div>
@@ -181,6 +212,7 @@ function renderPopularCities(){
   });
 
   els.citySuggestions.classList.remove("hidden");
+  positionCitySuggestions();
 }
 
 async function searchCities(q){
@@ -193,6 +225,7 @@ async function searchCities(q){
     els.citySuggestions.classList.add("hidden");
     return;
   }
+  els.citySuggestions.style.position = 'fixed';
   try{
     const data = await npRequest("Address", "searchSettlements", {
       CityName: value,
@@ -216,6 +249,7 @@ async function searchCities(q){
       });
     }
     els.citySuggestions.classList.remove("hidden");
+    positionCitySuggestions();
   }catch(e){
     els.status.textContent = e.message;
   }
