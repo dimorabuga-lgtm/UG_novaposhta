@@ -568,3 +568,43 @@ html[data-large-text="1"] .operator-notes{min-height:192px}
 .map-popup-limits strong,.map-popup-limits span{display:block;margin:0;color:var(--text);font-size:12px;line-height:1.45}
 html[data-large-text="1"] .warehouse-limit-row{font-size:15px}
 html[data-large-text="1"] .warehouse-limits-title{font-size:12px}
+
+/* Ukrposhta postal index search */
+.ukrposhta-dialog{width:min(760px,calc(100vw - 40px));max-width:760px;padding:0;border:0;border-radius:18px;overflow:hidden;background:transparent}
+.ukrposhta-panel{display:flex;flex-direction:column;max-height:calc(100vh - 40px);padding:22px;background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:18px}
+.ukrposhta-dialog-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
+.ukrposhta-dialog-head h2{margin:3px 0 5px;font-size:1.35rem;color:var(--text)}
+.ukrposhta-dialog-head p{margin:0;color:var(--muted);font-size:.9rem}
+.ukrposhta-eyebrow{color:#a47600;font-size:.67rem;font-weight:900;letter-spacing:.13em;text-transform:uppercase}
+html[data-theme="dark"] .ukrposhta-eyebrow{color:#FFD84D}
+.ukrposhta-search-label{display:block;margin:17px 0 7px;color:var(--muted);font-size:.82rem;font-weight:800}
+.ukrposhta-search-input{width:100%;min-height:46px;padding:11px 13px;border:1px solid var(--line);border-radius:11px;outline:none;background:var(--input);color:var(--input-text);font:inherit}
+.ukrposhta-search-input:focus{border-color:#d2a900;box-shadow:0 0 0 3px rgba(255,216,77,.25)}
+.ukrposhta-status-row{display:flex;justify-content:space-between;gap:16px;margin:10px 1px;color:var(--muted);font-size:.76rem}
+#ukrposhtaStatus{font-weight:750}
+#ukrposhtaUpdated{text-align:right;white-space:nowrap}
+.ukrposhta-results{display:grid;gap:8px;min-height:80px;overflow-y:auto;overflow-x:hidden;padding-right:4px}
+.ukrposhta-result-card{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 13px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2)}
+.ukrposhta-result-main{min-width:0;color:var(--text);font-size:.88rem;line-height:1.4}
+.ukrposhta-result-main>strong{display:block;margin-top:3px}
+.ukrposhta-result-main small{display:block;margin-top:4px;color:var(--muted);font-size:.75rem;overflow-wrap:anywhere}
+.ukrposhta-result-brand{color:#a47600;font-size:.62rem;font-weight:900;letter-spacing:.13em}
+html[data-theme="dark"] .ukrposhta-result-brand{color:#FFD84D}
+.ukrposhta-result-index{display:flex;align-items:baseline;gap:8px;margin-top:2px;color:var(--text);font-size:1.35rem;font-weight:900;letter-spacing:.04em}
+.ukrposhta-result-index span{color:var(--muted);font-size:.7rem;font-weight:750;letter-spacing:0}
+.ukrposhta-copy{flex:0 0 auto;min-height:36px;padding:7px 11px;border:0;border-radius:9px;background:#FFD84D;color:#1A1A1A;font-weight:850}
+.ukrposhta-copy:hover{background:#F4C933}
+.ukrposhta-source{margin-top:10px;color:var(--muted);font-size:.7rem}
+.ukrposhta-source a{color:var(--text);font-weight:750}
+
+@media(max-width:600px){
+  .ukrposhta-dialog{width:calc(100vw - 24px)}
+  .ukrposhta-panel{padding:16px;max-height:calc(100vh - 24px)}
+  .ukrposhta-status-row{flex-direction:column;gap:3px}
+  #ukrposhtaUpdated{text-align:left;white-space:normal}
+  .ukrposhta-result-card{align-items:flex-start;flex-direction:column}
+  .ukrposhta-copy{width:100%}
+}
+
+html[data-large-text="1"] .ukrposhta-result-main{font-size:1rem}
+html[data-large-text="1"] .ukrposhta-result-main small{font-size:.85rem}

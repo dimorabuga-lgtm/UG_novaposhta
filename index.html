@@ -45,7 +45,7 @@
           <button id="settingsBtn" class="header-action-btn" type="button">⚙ Налаштування</button>
           <button id="logoutBtn" class="header-logout-btn" type="button">Вийти</button>
         </div>
-        <a class="ukrposhta-link" href="https://offices.ukrposhta.ua/" target="_blank" rel="noopener noreferrer" aria-label="Укрпошта — знайти відділення, відкриється в новій вкладці"><span aria-hidden="true">✉</span> Укрпошта — знайти відділення <span aria-hidden="true">↗</span></a>
+        <button id="ukrposhtaSearchBtn" class="ukrposhta-link" type="button"><span aria-hidden="true">✉</span> Укрпошта — знайти індекс</button>
       </div>
       <div class="header-orb header-orb-one" aria-hidden="true"></div>
       <div class="header-orb header-orb-two" aria-hidden="true"></div>
@@ -109,6 +109,27 @@
         <button id="clearNotesBtn" class="notes-clear" type="button">Очистити</button>
         <button id="closeNotesBtn" class="primary" type="button">Закрити</button>
       </div>
+    </div>
+  </dialog>
+
+  <dialog id="ukrposhtaDialog" class="ukrposhta-dialog">
+    <div class="ukrposhta-panel">
+      <div class="ukrposhta-dialog-head">
+        <div>
+          <div class="ukrposhta-eyebrow">Окремий сервіс</div>
+          <h2>Пошук індексу Укрпошти</h2>
+          <p>Введіть населений пункт, адресу або поштовий індекс</p>
+        </div>
+        <button id="closeUkrposhtaBtn" class="icon-btn" type="button" aria-label="Закрити пошук індексу">✕</button>
+      </div>
+      <label class="ukrposhta-search-label" for="ukrposhtaQuery">Місто, вулиця або індекс</label>
+      <input id="ukrposhtaQuery" class="ukrposhta-search-input" type="search" autocomplete="off" placeholder="Наприклад: Київ, Хрещатик або 01001" />
+      <div class="ukrposhta-status-row">
+        <span id="ukrposhtaStatus" role="status" aria-live="polite">Введіть запит для пошуку.</span>
+        <span id="ukrposhtaUpdated"></span>
+      </div>
+      <div id="ukrposhtaResults" class="ukrposhta-results"></div>
+      <div class="ukrposhta-source">Джерело даних: відкриті дані АТ «Укрпошта». <a href="https://data.gov.ua/dataset/post-index-and-braches" target="_blank" rel="noopener noreferrer">Офіційний набір ↗</a></div>
     </div>
   </dialog>
 

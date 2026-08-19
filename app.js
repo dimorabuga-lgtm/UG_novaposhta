@@ -20,6 +20,13 @@ const els = {
   notesStatus: document.querySelector('#notesStatus'),
   clearNotesBtn: document.querySelector('#clearNotesBtn'),
   closeNotesBtn: document.querySelector('#closeNotesBtn'),
+  ukrposhtaSearchBtn: document.querySelector('#ukrposhtaSearchBtn'),
+  ukrposhtaDialog: document.querySelector('#ukrposhtaDialog'),
+  closeUkrposhtaBtn: document.querySelector('#closeUkrposhtaBtn'),
+  ukrposhtaQuery: document.querySelector('#ukrposhtaQuery'),
+  ukrposhtaStatus: document.querySelector('#ukrposhtaStatus'),
+  ukrposhtaUpdated: document.querySelector('#ukrposhtaUpdated'),
+  ukrposhtaResults: document.querySelector('#ukrposhtaResults'),
   loginOverlay: document.querySelector('#loginOverlay'),
   sitePassword: document.querySelector('#sitePassword'),
   loginBtn: document.querySelector('#loginBtn'),
@@ -51,6 +58,9 @@ let warehouseMarkers = new Map();
 let selectedWarehouseKey = null;
 let hoveredWarehouseKey = null;
 let fitMapOnNextRender = false;
+let ukrposhtaData = null;
+let ukrposhtaDataPromise = null;
+let ukrposhtaSearchTimer = null;
 
 const POPULAR_CITIES = [
   "Київ",
@@ -113,6 +123,169 @@ els.notesBtn?.addEventListener('click', () => {
 
 els.closeNotesBtn?.addEventListener('click', () => {
   els.notesDialog?.close();
+});
+
+function normalizeUkrposhtaSearch(value){
+  return String(value || '')
+    .toLocaleLowerCase('uk-UA')
+    .replace(/[’'`]/g, '')
+    .replace(/(^|\s)м\.?(?=\s)/gu, '$1')
+    .replace(/(^|\s)вул\.?(?=\s)/gu, '$1')
+    .replace(/(^|\s)вулиця(?=\s)/gu, '$1')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function ukrposhtaIndex(record){
+  return String(record[0]).padStart(5, '0');
+}
+
+function expandUkrposhtaRecord(record){
+  return {
+    index: ukrposhtaIndex(record),
+    city: ukrposhtaData.cities[record[1]] || '',
+    region: ukrposhtaData.regions[record[2]] || '',
+    district: ukrposhtaData.districts[record[3]] || '',
+    street: ukrposhtaData.streets[record[4]] || '',
+    office: ukrposhtaData.offices[record[5]] || ''
+  };
+}
+
+async function loadUkrposhtaData(){
+  if(ukrposhtaData) return ukrposhtaData;
+  if(ukrposhtaDataPromise) return ukrposhtaDataPromise;
+  els.ukrposhtaStatus.textContent = 'Завантаження бази індексів...';
+  const dataUrl = new URL('./data/ukrposhta-indexes.json', window.location.href);
+  ukrposhtaDataPromise = fetch(dataUrl)
+    .then(response => {
+      if(!response.ok){
+        console.error(
+          'Ukrposhta dataset load failed:',
+          response.status,
+          response.statusText,
+          dataUrl.href
+        );
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return response.json();
+    })
+    .then(data => {
+      const validDataset = data
+        && typeof data === 'object'
+        && Array.isArray(data.records)
+        && Array.isArray(data.cities)
+        && Array.isArray(data.regions)
+        && Array.isArray(data.districts)
+        && Array.isArray(data.streets)
+        && Array.isArray(data.offices);
+      if(!validDataset) throw new Error('Некоректний формат бази Укрпошти');
+      data.search = {
+        cities: data.cities.map(normalizeUkrposhtaSearch),
+        regions: data.regions.map(normalizeUkrposhtaSearch),
+        districts: data.districts.map(normalizeUkrposhtaSearch),
+        streets: data.streets.map(normalizeUkrposhtaSearch),
+        offices: data.offices.map(normalizeUkrposhtaSearch)
+      };
+      ukrposhtaData = data;
+      els.ukrposhtaUpdated.textContent = `База оновлена: ${data.updated || 'дату не вказано'}`;
+      els.ukrposhtaStatus.textContent = 'Введіть запит для пошуку.';
+      return data;
+    })
+    .catch(error => {
+      ukrposhtaDataPromise = null;
+      console.error('Ukrposhta dataset processing failed:', error.message, dataUrl.href);
+      els.ukrposhtaStatus.textContent = 'Не вдалося завантажити базу індексів Укрпошти.';
+      throw error;
+    });
+  return ukrposhtaDataPromise;
+}
+
+function ukrposhtaCopyText(item){
+  const region = item.region && !/^київ$/i.test(item.region)
+    ? (/область/i.test(item.region) ? item.region : `${item.region} область`)
+    : '';
+  return ['УП', item.index, item.street, region, item.city].filter(Boolean).join(' ');
+}
+
+function renderUkrposhtaResults(records, hasMore){
+  els.ukrposhtaResults.innerHTML = '';
+  records.forEach(record => {
+    const item = expandUkrposhtaRecord(record);
+    const card = document.createElement('article');
+    card.className = 'ukrposhta-result-card';
+    card.innerHTML = `
+      <div class="ukrposhta-result-main">
+        <div class="ukrposhta-result-brand">УКРПОШТА</div>
+        <div class="ukrposhta-result-index"><span>Індекс</span>${escapeHtml(item.index)}</div>
+        <strong>${escapeHtml(item.city)}</strong>
+        ${item.street ? `<div>${escapeHtml(item.street)}</div>` : ''}
+        <small>${escapeHtml([item.region, item.district, item.office].filter(Boolean).join(' • '))}</small>
+      </div>
+      <button class="ukrposhta-copy" type="button">Копіювати</button>`;
+    card.querySelector('.ukrposhta-copy').addEventListener('click', async () => {
+      const text = ukrposhtaCopyText(item);
+      try{
+        await navigator.clipboard.writeText(text);
+        toast('Скопійовано ✓');
+      }catch{
+        fallbackCopy(text);
+      }
+    });
+    els.ukrposhtaResults.appendChild(card);
+  });
+  els.ukrposhtaStatus.textContent = hasMore
+    ? 'Знайдено багато результатів. Уточніть адресу.'
+    : (records.length ? `Знайдено: ${records.length}` : 'Нічого не знайдено.');
+}
+
+function searchUkrposhta(){
+  if(!ukrposhtaData) return;
+  const rawQuery = els.ukrposhtaQuery.value.trim();
+  els.ukrposhtaResults.innerHTML = '';
+  if(!rawQuery){
+    els.ukrposhtaStatus.textContent = 'Введіть запит для пошуку.';
+    return;
+  }
+
+  const exactIndex = /^\d{5}$/.test(rawQuery) ? Number(rawQuery) : null;
+  const tokens = exactIndex === null ? normalizeUkrposhtaSearch(rawQuery).split(' ').filter(Boolean) : [];
+  const matches = [];
+  for(const record of ukrposhtaData.records){
+    let matchesQuery = record[0] === exactIndex;
+    if(exactIndex === null){
+      const haystack = [
+        ukrposhtaIndex(record),
+        ukrposhtaData.search.cities[record[1]],
+        ukrposhtaData.search.regions[record[2]],
+        ukrposhtaData.search.districts[record[3]],
+        ukrposhtaData.search.streets[record[4]],
+        ukrposhtaData.search.offices[record[5]]
+      ].join(' ');
+      matchesQuery = tokens.length > 0 && tokens.every(token => haystack.includes(token));
+    }
+    if(matchesQuery){
+      matches.push(record);
+      if(matches.length > 50) break;
+    }
+  }
+  renderUkrposhtaResults(matches.slice(0, 50), matches.length > 50);
+}
+
+els.ukrposhtaSearchBtn?.addEventListener('click', () => {
+  if(!els.ukrposhtaDialog || els.ukrposhtaDialog.open) return;
+  els.ukrposhtaDialog.showModal();
+  els.ukrposhtaQuery.focus();
+  loadUkrposhtaData().then(() => {
+    if(els.ukrposhtaQuery.value.trim()) searchUkrposhta();
+  }).catch(() => {});
+});
+
+els.closeUkrposhtaBtn?.addEventListener('click', () => els.ukrposhtaDialog?.close());
+
+els.ukrposhtaQuery?.addEventListener('input', () => {
+  clearTimeout(ukrposhtaSearchTimer);
+  ukrposhtaSearchTimer = setTimeout(searchUkrposhta, 250);
 });
 
 if(els.citySuggestions && els.citySuggestions.parentElement){
@@ -1082,6 +1255,7 @@ document.addEventListener('keydown', (e) => {
     try{ if(els.adminPassDialog.open) els.adminPassDialog.close(); }catch{}
     try{ if(els.newKeyDialog.open) els.newKeyDialog.close(); }catch{}
     try{ if(els.notesDialog.open) els.notesDialog.close(); }catch{}
+    try{ if(els.ukrposhtaDialog.open) els.ukrposhtaDialog.close(); }catch{}
   }
 });
 
