@@ -10,11 +10,22 @@ const els = {
   clear: document.querySelector("#clearBtn"),
   toast: document.querySelector("#toast"),
   template: document.querySelector("#warehouseTemplate"),
+  map: document.querySelector("#warehouseMap"),
+  mapPanel: document.querySelector("#mapPanel"),
+  mapPlaceholder: document.querySelector("#mapPlaceholder"),
+  mapToggle: document.querySelector("#mapToggle"),
+  notesBtn: document.querySelector('#notesBtn'),
+  notesDialog: document.querySelector('#notesDialog'),
+  operatorNotes: document.querySelector('#operatorNotes'),
+  notesStatus: document.querySelector('#notesStatus'),
+  clearNotesBtn: document.querySelector('#clearNotesBtn'),
+  closeNotesBtn: document.querySelector('#closeNotesBtn'),
   loginOverlay: document.querySelector('#loginOverlay'),
   sitePassword: document.querySelector('#sitePassword'),
   loginBtn: document.querySelector('#loginBtn'),
   settingsBtn: document.querySelector('#settingsBtn'),
-  themeToggle: document.querySelector('#themeToggle'),
+  lightThemeBtn: document.querySelector('#lightThemeBtn'),
+  darkThemeBtn: document.querySelector('#darkThemeBtn'),
   logoutBtn: document.querySelector('#logoutBtn'),
   settingsDialog: document.querySelector('#settingsDialog'),
   apiStatus: document.querySelector('#apiStatus'),
@@ -34,6 +45,12 @@ let selectedCity = null;
 let warehouses = [];
 let filterType = "all";
 let cityTimer = null;
+let warehouseMap = null;
+let warehouseMarkerLayer = null;
+let warehouseMarkers = new Map();
+let selectedWarehouseKey = null;
+let hoveredWarehouseKey = null;
+let fitMapOnNextRender = false;
 
 const POPULAR_CITIES = [
   "Київ",
@@ -57,6 +74,46 @@ const POPULAR_CITIES = [
   "Луцьк",
   "Ужгород"
 ];
+
+const OPERATOR_NOTES_KEY = 'ug_operator_notes';
+
+function showNotesSaved(){
+  if(!els.notesStatus) return;
+  els.notesStatus.textContent = 'Збережено ✓';
+  clearTimeout(showNotesSaved.timer);
+  showNotesSaved.timer = setTimeout(() => {
+    els.notesStatus.textContent = '';
+  }, 1400);
+}
+
+if(els.operatorNotes){
+  els.operatorNotes.value = localStorage.getItem(OPERATOR_NOTES_KEY) || '';
+  els.operatorNotes.addEventListener('input', () => {
+    localStorage.setItem(OPERATOR_NOTES_KEY, els.operatorNotes.value);
+    showNotesSaved();
+  });
+}
+
+els.clearNotesBtn?.addEventListener('click', () => {
+  if(!els.operatorNotes?.value) return;
+  if(!window.confirm('Очистити нотатки?')) return;
+  els.operatorNotes.value = '';
+  localStorage.removeItem(OPERATOR_NOTES_KEY);
+  els.notesStatus.textContent = '';
+  els.operatorNotes.focus();
+});
+
+els.notesBtn?.addEventListener('click', () => {
+  if(!els.notesDialog || els.notesDialog.open) return;
+  els.operatorNotes.value = localStorage.getItem(OPERATOR_NOTES_KEY) || '';
+  els.notesStatus.textContent = '';
+  els.notesDialog.showModal();
+  setTimeout(() => els.operatorNotes.focus(), 0);
+});
+
+els.closeNotesBtn?.addEventListener('click', () => {
+  els.notesDialog?.close();
+});
 
 if(els.citySuggestions && els.citySuggestions.parentElement){
   document.body.appendChild(els.citySuggestions);
@@ -98,19 +155,199 @@ function applyTheme(theme){
   const next = theme === 'dark' ? 'dark' : 'light';
   document.documentElement.dataset.theme = next;
   localStorage.setItem('ug_theme', next);
-  if(els.themeToggle){
-    els.themeToggle.textContent = next === 'dark' ? '☀️' : '🌙';
-    els.themeToggle.title = next === 'dark' ? 'Світла тема' : 'Темна тема';
-    els.themeToggle.setAttribute('aria-label', next === 'dark' ? 'Переключити на світлу тему' : 'Переключити на темну тему');
+  els.lightThemeBtn?.classList.toggle('is-active', next === 'light');
+  els.darkThemeBtn?.classList.toggle('is-active', next === 'dark');
+  els.lightThemeBtn?.setAttribute('aria-pressed', String(next === 'light'));
+  els.darkThemeBtn?.setAttribute('aria-pressed', String(next === 'dark'));
+  if(warehouseMap) setTimeout(() => warehouseMap.invalidateSize(), 0);
+}
+
+els.lightThemeBtn?.addEventListener('click', () => applyTheme('light'));
+els.darkThemeBtn?.addEventListener('click', () => applyTheme('dark'));
+
+applyTheme(getStoredTheme());
+
+function initWarehouseMap(){
+  if(warehouseMap) return true;
+  if(!els.map || typeof L === 'undefined') return false;
+  warehouseMap = L.map(els.map, { zoomControl: true });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+  }).addTo(warehouseMap);
+  els.mapPlaceholder?.classList.add('hidden');
+  setTimeout(() => warehouseMap.invalidateSize(), 0);
+  return true;
+}
+
+function warehouseCoordinates(warehouse){
+  const latitude = Number.parseFloat(String(warehouse?.Latitude ?? '').replace(',', '.'));
+  const longitude = Number.parseFloat(String(warehouse?.Longitude ?? '').replace(',', '.'));
+  if(!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  if(latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
+  if(latitude === 0 && longitude === 0) return null;
+  return [latitude, longitude];
+}
+
+function warehouseKey(warehouse, index = 0){
+  return String(warehouse?.Ref || [warehouse?.Number, warehouse?.Latitude, warehouse?.Longitude, warehouse?.Description].join('|'));
+}
+
+function warehouseMarkerType(warehouse){
+  if(isPostomat(warehouse)) return 'postomat';
+  if(isCargoBranch(warehouse)) return 'cargo';
+  return 'branch';
+}
+
+function markerIcon(type = 'branch', state = ''){
+  const label = type === 'postomat' ? 'П' : (type === 'cargo' ? 'В' : '');
+  return L.divIcon({
+    className: '',
+    html: `<div class="warehouse-marker marker-${type}${state ? ` is-${state}` : ''}">${label}</div>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    popupAnchor: [0, -16]
+  });
+}
+
+function warehousePopup(warehouse, key){
+  const status = buildWarehouseStatus(warehouse);
+  const limits = getWarehouseLimits(warehouse);
+  const type = warehouseMarkerType(warehouse);
+  const typeLabel = type === 'postomat' ? 'ПОШТОМАТ' : (type === 'cargo' ? 'ВАНТАЖНЕ' : 'ВІДДІЛЕННЯ');
+  const number = warehouse.Number ? `${type === 'postomat' ? 'Поштомат' : 'Відділення'} №${escapeHtml(warehouse.Number)}` : typeLabel;
+  const address = escapeHtml(warehouse.ShortAddress || warehouse.Description || 'Адресу не вказано');
+  const statusText = escapeHtml(status.label || 'Статус не вказано');
+  const schedule = escapeHtml(status.todayText || 'Графік на сьогодні не вказано');
+  const coordinates = warehouseCoordinates(warehouse);
+  const routeUrl = coordinates ? `https://www.google.com/maps/dir/?api=1&destination=${coordinates[0]},${coordinates[1]}` : '';
+  return `<div class="map-popup"><b>${typeLabel}</b><strong>${number}</strong><div>${address}</div><span>${statusText}</span><span>${schedule}</span><div class="map-popup-limits"><strong>⚖ до ${escapeHtml(formatLimitNumber(limits.weight))} кг</strong><span>📦 до ${escapeHtml(formatDimensions(limits))} см</span></div><div class="map-popup-actions"><button type="button" data-map-copy="${escapeHtml(key)}">Копіювати</button><a href="${routeUrl}" target="_blank" rel="noopener noreferrer">Маршрут</a></div></div>`;
+}
+
+function setMarkerState(key, state = ''){
+  const entry = warehouseMarkers.get(key);
+  if(!entry) return;
+  entry.marker.setIcon(markerIcon(entry.type, state));
+  entry.marker.setZIndexOffset(state === 'selected' ? 1000 : (state === 'hovered' ? 500 : 0));
+}
+
+function setMarkerHover(key, active){
+  const entry = warehouseMarkers.get(key);
+  if(!entry) return;
+  setMarkerState(key, active ? 'hovered' : '');
+  const visibleParent = warehouseMarkerLayer?.getVisibleParent?.(entry.marker);
+  if(visibleParent && visibleParent !== entry.marker){
+    visibleParent.getElement?.()?.classList.toggle('is-marker-hovered', active);
   }
 }
 
-els.themeToggle?.addEventListener('click', () => {
-  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-  applyTheme(next);
+function selectWarehouseOnMap(warehouse, key, options = {}){
+  const { fly = true, openPopup = true, scrollCard = false } = options;
+  document.querySelectorAll('.warehouse-card.is-selected').forEach(card => card.classList.remove('is-selected'));
+  const card = document.querySelector(`.warehouse-card[data-warehouse-key="${CSS.escape(key)}"]`);
+  card?.classList.add('is-selected');
+  if(scrollCard) card?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  if(!warehouseMap) return;
+  if(selectedWarehouseKey) setMarkerState(selectedWarehouseKey, '');
+  if(hoveredWarehouseKey === key){
+    setMarkerHover(key, false);
+    hoveredWarehouseKey = null;
+  }
+  selectedWarehouseKey = key;
+  const entry = warehouseMarkers.get(key);
+  if(!entry) return;
+  setMarkerState(key, 'selected');
+  if(fly){
+    warehouseMap.flyTo(entry.marker.getLatLng(), 16, { duration: .45 });
+    if(openPopup) warehouseMap.once('moveend', () => {
+      if(warehouseMarkerLayer?.zoomToShowLayer) warehouseMarkerLayer.zoomToShowLayer(entry.marker, () => entry.marker.openPopup());
+      else entry.marker.openPopup();
+    });
+  } else if(openPopup){
+    entry.marker.openPopup();
+  }
+}
+
+function prepareWarehouseMarkers(data){
+  if(!initWarehouseMap()) return;
+  if(warehouseMarkerLayer) warehouseMap.removeLayer(warehouseMarkerLayer);
+  warehouseMarkerLayer = null;
+  warehouseMarkers.clear();
+  selectedWarehouseKey = null;
+  data.forEach((warehouse, index) => {
+    const coordinates = warehouseCoordinates(warehouse);
+    if(!coordinates) return;
+    const key = warehouseKey(warehouse, index);
+    const type = warehouseMarkerType(warehouse);
+    const marker = L.marker(coordinates, { icon: markerIcon(type), keyboard: true })
+      .bindPopup(warehousePopup(warehouse, key))
+      .on('click', () => selectWarehouseOnMap(warehouse, key, { fly: false, openPopup: false, scrollCard: true }));
+    warehouseMarkers.set(key, { marker, warehouse, type });
+  });
+  fitMapOnNextRender = true;
+}
+
+function renderMapMarkers(data, options = {}){
+  if(!warehouseMap) return;
+  const { focusSingle = false } = options;
+  if(warehouseMarkerLayer) warehouseMap.removeLayer(warehouseMarkerLayer);
+  const visibleEntries = data.map((warehouse, index) => warehouseMarkers.get(warehouseKey(warehouse, index))).filter(Boolean);
+  const useClusters = visibleEntries.length >= 12 && typeof L.markerClusterGroup === 'function';
+  warehouseMarkerLayer = useClusters
+    ? L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 46, spiderfyOnMaxZoom: true })
+    : L.featureGroup();
+  visibleEntries.forEach(entry => warehouseMarkerLayer.addLayer(entry.marker));
+  warehouseMarkerLayer.addTo(warehouseMap);
+
+  if(focusSingle && visibleEntries.length === 1){
+    const entry = visibleEntries[0];
+    warehouseMap.setView(entry.marker.getLatLng(), 16);
+    setTimeout(() => entry.marker.openPopup(), 0);
+    fitMapOnNextRender = false;
+    return;
+  }
+
+  if(fitMapOnNextRender && visibleEntries.length){
+    const bounds = L.latLngBounds(visibleEntries.map(entry => entry.marker.getLatLng()));
+    if(visibleEntries.length === 1) warehouseMap.setView(bounds.getCenter(), 15);
+    else warehouseMap.fitBounds(bounds, { padding: [36, 36], maxZoom: 16 });
+    fitMapOnNextRender = false;
+  }
+}
+
+function resetWarehouseMap(){
+  if(warehouseMap) warehouseMap.remove();
+  warehouseMap = null;
+  warehouseMarkerLayer = null;
+  warehouseMarkers.clear();
+  selectedWarehouseKey = null;
+  hoveredWarehouseKey = null;
+  fitMapOnNextRender = false;
+  els.mapPlaceholder?.classList.remove('hidden');
+  els.mapPanel?.classList.remove('is-mobile-open');
+  if(els.mapToggle){
+    els.mapToggle.textContent = 'Показати карту';
+    els.mapToggle.setAttribute('aria-expanded', 'false');
+  }
+}
+
+els.mapPanel?.addEventListener('click', (event) => {
+  const copyButton = event.target.closest('[data-map-copy]');
+  if(!copyButton) return;
+  const entry = warehouseMarkers.get(copyButton.dataset.mapCopy);
+  if(entry) copyWarehouseAddress(entry.warehouse);
 });
 
-applyTheme(getStoredTheme());
+els.mapToggle?.addEventListener('click', () => {
+  const expanded = els.mapPanel?.classList.toggle('is-mobile-open') || false;
+  els.mapToggle.textContent = expanded ? 'Сховати карту' : 'Показати карту';
+  els.mapToggle.setAttribute('aria-expanded', String(expanded));
+  if(expanded) setTimeout(() => {
+    warehouseMap?.invalidateSize();
+    const bounds = warehouseMarkerLayer?.getBounds?.();
+    if(bounds?.isValid()) warehouseMap.fitBounds(bounds, { padding: [28, 28], maxZoom: 16 });
+  }, 0);
+});
 
 async function npRequest(modelName, calledMethod, methodProperties = {}){
   const apiKey = localStorage.getItem('nova_poshta_api_key') || '';
@@ -168,9 +405,9 @@ function positionCitySuggestions(){
 function renderPopularCities(){
   els.citySuggestions.innerHTML = `
     <div class="popular-header">Популярні міста</div>
-    <div class="popular-grid">
+    <div class="popular-grid popular-cities-grid">
       ${POPULAR_CITIES.map(city => `
-        <button type="button" class="popular-item" data-city="${escapeHtml(city)}">
+        <button type="button" class="popular-item popular-city-btn" data-city="${escapeHtml(city)}">
           <span class="popular-pin">📍</span>
           <span>${escapeHtml(city)}</span>
         </button>
@@ -240,7 +477,7 @@ async function searchCities(q){
     } else {
       addresses.forEach(item => {
         const div = document.createElement("div");
-        div.className = "suggestion";
+        div.className = "suggestion city-suggestion";
         const region = [item.Area, item.Region].filter(Boolean).join(", ");
         div.innerHTML = `<strong>${escapeHtml(item.Present || item.MainDescription || "")}</strong>
           ${region ? `<small>${escapeHtml(region)}</small>` : ""}`;
@@ -270,6 +507,7 @@ async function selectCity(item){
       Limit: 1000,
       Page: 1
     });
+    prepareWarehouseMarkers(warehouses);
     renderWarehouses();
   }catch(e){
     warehouses = [];
@@ -288,6 +526,51 @@ function isCargoBranch(w){
   const maxWeight = Number(String(w.TotalMaxWeightAllowed || "").replace(",", "."));
   const text = `${w.Description || ""} ${w.DescriptionRu || ""}`.toLowerCase();
   return maxWeight > 30 || text.includes("вантажне") || text.includes("грузовое");
+}
+
+function positiveLimit(value){
+  const number = Number.parseFloat(String(value ?? '').replace(',', '.'));
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function formatLimitNumber(value){
+  return Number.isInteger(value) ? String(value) : String(value).replace('.', ',');
+}
+
+function getWarehouseLimits(warehouse){
+  const postomat = isPostomat(warehouse);
+  const cargo = isCargoBranch(warehouse);
+  const defaults = postomat
+    ? { type: 'postomat', weight: 20, length: 60, width: 40, height: 30 }
+    : cargo
+      ? { type: 'cargo', weight: 1000, length: 300, width: 170, height: 170 }
+      : { type: 'branch', weight: 30, length: 120, width: 70, height: 70 };
+
+  const totalWeight = positiveLimit(warehouse?.TotalMaxWeightAllowed);
+  const placeWeight = positiveLimit(warehouse?.PlaceMaxWeightAllowed);
+  const apiDimensions = warehouse?.SendingLimitationsOnDimensions;
+
+  return {
+    ...defaults,
+    weight: totalWeight ?? placeWeight ?? defaults.weight,
+    length: positiveLimit(apiDimensions?.Length) ?? defaults.length,
+    width: positiveLimit(apiDimensions?.Width) ?? defaults.width,
+    height: positiveLimit(apiDimensions?.Height) ?? defaults.height
+  };
+}
+
+function formatDimensions(limits){
+  return `${formatLimitNumber(limits.length)} × ${formatLimitNumber(limits.width)} × ${formatLimitNumber(limits.height)}`;
+}
+
+function warehouseLimitsRows(limits){
+  const weight = `<div class="warehouse-limit-row warehouse-limit-weight"><span aria-hidden="true">⚖</span><span>До <strong>${escapeHtml(formatLimitNumber(limits.weight))} кг</strong></span></div>`;
+  if(limits.type === 'postomat'){
+    return `${weight}<div class="warehouse-limit-row"><span aria-hidden="true">📦</span><span>До ${escapeHtml(formatDimensions(limits))} см</span></div>`;
+  }
+  const lengthLabel = limits.type === 'cargo' ? 'До' : 'Довжина до';
+  const crossLabel = limits.type === 'cargo' ? 'До' : 'Ширина / висота до';
+  return `${weight}<div class="warehouse-limit-row"><span aria-hidden="true">↔</span><span>${lengthLabel} ${escapeHtml(formatLimitNumber(limits.length))} см</span></div><div class="warehouse-limit-row"><span aria-hidden="true">↕</span><span>${crossLabel} ${escapeHtml(formatLimitNumber(limits.width))} × ${escapeHtml(formatLimitNumber(limits.height))} см</span></div>`;
 }
 
 function getKyivDate() {
@@ -459,13 +742,15 @@ function buildWarehouseStatus(warehouse) {
 
 function renderWarehouses(){
   const query = els.warehouse.value.trim().toLowerCase();
+  const isNumberQuery = /^\d+$/.test(query);
   let data = warehouses.filter(w => {
     if(filterType === "postomat" && !isPostomat(w)) return false;
     if(filterType === "branch" && isPostomat(w)) return false;
     if(filterType === "cargo" && !isCargoBranch(w)) return false;
     if(!query) return true;
+    if(isNumberQuery) return String(w.Number ?? "").trim() === query;
     const hay = [
-      w.Number, w.Description, w.ShortAddress, w.SettlementDescription,
+      w.Description, w.DescriptionRu, w.ShortAddress, w.SettlementDescription,
       w.CityDescription
     ].filter(Boolean).join(" ").toLowerCase();
     return hay.includes(query);
@@ -473,30 +758,39 @@ function renderWarehouses(){
 
   data.sort((a,b) => (parseInt(a.Number)||999999) - (parseInt(b.Number)||999999));
 
+  renderMapMarkers(data, { focusSingle: isNumberQuery && data.length === 1 });
+
   els.results.innerHTML = "";
   els.status.textContent = selectedCity
-    ? `Знайдено: ${data.length}`
+    ? (isNumberQuery && !data.length ? `Відділення №${query} не знайдено` : `Знайдено: ${data.length}`)
     : "Введіть назву міста";
 
   if(!data.length){
-    els.results.innerHTML = '<div class="empty">За вашим запитом нічого не знайдено</div>';
+    els.results.innerHTML = isNumberQuery
+      ? `<div class="empty">Відділення №${query} не знайдено</div>`
+      : '<div class="empty">За вашим запитом нічого не знайдено</div>';
     return;
   }
 
-  data.slice(0,250).forEach(w => {
+  data.slice(0,250).forEach((w, index) => {
     const node = els.template.content.cloneNode(true);
+    const card = node.querySelector('.warehouse-card');
+    const key = warehouseKey(w, index);
+    card.dataset.warehouseKey = key;
     const postomat = isPostomat(w);
     const cargo = isCargoBranch(w);
     const title = w.Description || `${postomat ? "Поштомат" : "Відділення"} №${w.Number || ""}`;
     const address = w.ShortAddress || w.Description || "";
     const city = w.CityDescription || selectedCity?.MainDescription || selectedCity?.Present || "";
-    const weight = w.TotalMaxWeightAllowed ? `до ${w.TotalMaxWeightAllowed} кг` : "";
     const status = buildWarehouseStatus(w);
+    const limits = getWarehouseLimits(w);
 
     node.querySelector(".badge").textContent = postomat ? "ПОШТОМАТ" : (cargo ? "ВАНТАЖНЕ" : "ВІДДІЛЕННЯ");
     node.querySelector(".warehouse-title").textContent = title;
     node.querySelector(".warehouse-address").textContent = address;
-    node.querySelector(".warehouse-extra").textContent = [city, weight].filter(Boolean).join(" • ");
+    node.querySelector(".warehouse-extra").textContent = city;
+    node.querySelector(".warehouse-limits-title").textContent = limits.type === 'postomat' ? 'ОБМЕЖЕННЯ' : 'ОБМЕЖЕННЯ ВІДДІЛЕННЯ';
+    node.querySelector(".warehouse-limits-rows").innerHTML = warehouseLimitsRows(limits);
 
     const statusBar = node.querySelector(".status-line");
     const statusText = node.querySelector(".status-text");
@@ -515,38 +809,51 @@ function renderWarehouses(){
       scheduleLine.textContent = status.todayText;
     }
 
-    node.querySelector(".copy-btn").addEventListener("click", async () => {
-      const number = String(w.Number || "").trim();
-      const rawAddress = String(w.ShortAddress || w.Description || "").trim();
-      const cityName = String(w.CityDescription || selectedCity?.MainDescription || "").trim();
-      const areaRaw = String(selectedCity?.Area || "").trim();
+    card.addEventListener('click', () => selectWarehouseOnMap(w, key));
+    card.addEventListener('mouseenter', () => {
+      if(key === selectedWarehouseKey) return;
+      hoveredWarehouseKey = key;
+      setMarkerHover(key, true);
+    });
+    card.addEventListener('mouseleave', () => {
+      if(hoveredWarehouseKey !== key || key === selectedWarehouseKey) return;
+      hoveredWarehouseKey = null;
+      setMarkerHover(key, false);
+    });
 
-      // ShortAddress часто вже містить місто на початку — прибираємо його,
-      // щоб у скопійованому тексті місто було лише один раз наприкінці.
-      let streetAddress = rawAddress
-        .replace(new RegExp(`^(м\.?\s*)?${escapeRegExp(cityName)}\s*,?\s*`, "i"), "")
-        .trim();
-
-      let area = areaRaw;
-      if(area && !/область/i.test(area)) area += " область";
-
-      const parts = [
-        `НП${number}`,
-        streetAddress,
-        area,
-        cityName ? `м. ${cityName.replace(/^м\.?\s*/i, "")}` : ""
-      ].filter(Boolean);
-
-      const copyText = parts.join(" ");
-      try{
-        await navigator.clipboard.writeText(copyText);
-        toast("Скопійовано ✓");
-      }catch{
-        fallbackCopy(copyText);
-      }
+    node.querySelector(".copy-btn").addEventListener("click", (event) => {
+      event.stopPropagation();
+      copyWarehouseAddress(w);
     });
     els.results.appendChild(node);
   });
+}
+
+function formatWarehouseCopyText(warehouse){
+  const number = String(warehouse.Number || "").trim();
+  const rawAddress = String(warehouse.ShortAddress || warehouse.Description || "").trim();
+  const cityName = String(warehouse.CityDescription || selectedCity?.MainDescription || "").trim();
+  const areaRaw = String(selectedCity?.Area || "").trim();
+  const streetAddress = rawAddress
+    .replace(new RegExp(`^(м\.?\s*)?${escapeRegExp(cityName)}\s*,?\s*`, "i"), "")
+    .trim();
+  const area = areaRaw && !/область/i.test(areaRaw) ? `${areaRaw} область` : areaRaw;
+  return [
+    `НП${number}`,
+    streetAddress,
+    area,
+    cityName ? `м. ${cityName.replace(/^м\.?\s*/i, "")}` : ""
+  ].filter(Boolean).join(" ");
+}
+
+async function copyWarehouseAddress(warehouse){
+  const copyText = formatWarehouseCopyText(warehouse);
+  try{
+    await navigator.clipboard.writeText(copyText);
+    toast("Скопійовано ✓");
+  }catch{
+    fallbackCopy(copyText);
+  }
 }
 
 function fallbackCopy(text){
@@ -568,6 +875,7 @@ function clearAll(){
   els.results.innerHTML = "";
   els.status.textContent = "Введіть назву міста";
   els.clear.classList.add("hidden");
+  resetWarehouseMap();
   els.city.focus();
 }
 
@@ -591,6 +899,7 @@ function resetCitySelection(){
   els.results.innerHTML = "";
   els.status.textContent = "Введіть назву міста";
   els.clear.classList.add("hidden");
+  resetWarehouseMap();
   renderPopularCities();
   els.city.focus();
 }
@@ -772,6 +1081,7 @@ document.addEventListener('keydown', (e) => {
     try{ if(els.settingsDialog.open) els.settingsDialog.close(); }catch{}
     try{ if(els.adminPassDialog.open) els.adminPassDialog.close(); }catch{}
     try{ if(els.newKeyDialog.open) els.newKeyDialog.close(); }catch{}
+    try{ if(els.notesDialog.open) els.notesDialog.close(); }catch{}
   }
 });
 
